@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { INBOX_CHANGED_CHANNEL } from "../contract";
 
-const project = { id: "project-a", name: "Project A", isPersonal: false };
+const project = { id: "project-a", name: "Project A", isPersonal: false, href: "/projects/project-a", settingsHref: "/projects/project-a/settings" };
 const message = {
   messageId: 1,
   projectId: "project-a",
@@ -147,6 +147,27 @@ describe("Operator Inbox panel", () => {
     await rendered.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
     await waitFor(() => expect(rendered.getByRole("status").textContent).toBe("2"));
     expect(unread).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the footer alert only while messages are unread", async () => {
+    const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
+    const app = await loadApp();
+    let count = 0;
+    const unread = vi.fn(async () => ({ count }));
+    const rendered = renderSlot(app.appOverlays[0]!, {}, {
+      sidebarThreads: { status: "ready", projects: [project], threads: [] },
+      rpc: handlers({ unreadOperatorMessageCount: unread }) as never,
+    });
+    await waitFor(() => expect(unread).toHaveBeenCalledTimes(1));
+    expect(rendered.queryByRole("button", { name: /Open Operator Inbox/ })).toBeNull();
+    count = 1;
+    await rendered.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
+    const alert = await rendered.findByRole("button", { name: "Open Operator Inbox, 1 unread message" });
+    fireEvent.click(alert);
+    expect(rendered.inspection.navigateCalls).toContainEqual({ method: "toPluginPanel", path: "inbox", options: undefined });
+    count = 0;
+    await rendered.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
+    await waitFor(() => expect(rendered.queryByRole("button", { name: /Open Operator Inbox/ })).toBeNull());
   });
 });
 

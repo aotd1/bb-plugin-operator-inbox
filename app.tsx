@@ -275,7 +275,7 @@ function InboxPanel(_props: PluginNavPanelProps) {
   </div></main>;
 }
 
-function InboxUnreadAccessory() {
+function useUnreadOperatorMessageCount() {
   const sidebar = experimental_useSidebarThreads();
   const rpc = useRpc<typeof rpcContract>();
   const projectIds = useMemo(() => sidebar.projects.map(({ id }) => id), [sidebar.projects]);
@@ -298,9 +298,29 @@ function InboxUnreadAccessory() {
     wasConnected.current = true;
   }, [realtimeState, refresh]);
 
+  return unread;
+}
+
+function InboxUnreadAccessory() {
+  const unread = useUnreadOperatorMessageCount();
+
   if (unread < 1) return null;
   const label = `${unread} unread operator ${unread === 1 ? "message" : "messages"}`;
   return <span role="status" aria-live="polite" aria-label={label} title={label} className="max-w-full truncate rounded-full bg-primary px-1.5 text-xs font-semibold leading-5 text-primary-foreground">{unread}</span>;
 }
 
-export default definePluginApp((app) => { app.slots.navPanel({ id: "inbox", title: "Inbox", icon: "./assets/envelope-simple-duotone.svg", path: "inbox", component: InboxPanel, experimental_sidebarAccessory: InboxUnreadAccessory }); });
+function InboxUnreadAlert() {
+  const unread = useUnreadOperatorMessageCount();
+  const navigate = useBbNavigate();
+  if (unread < 1) return null;
+  const label = `Open Operator Inbox, ${unread} unread ${unread === 1 ? "message" : "messages"}`;
+  return <button type="button" aria-label={label} title={label} className="fixed bottom-16 left-2 z-50 flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-lg hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" onClick={() => navigate.toPluginPanel("inbox") }>
+    <EnvelopeOpenIcon aria-hidden="true" focusable="false" color="currentColor" weight="duotone" size={19} />
+    <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] font-semibold leading-4 text-destructive-foreground">{unread > 99 ? "99+" : unread}</span>
+  </button>;
+}
+
+export default definePluginApp((app) => {
+  app.slots.experimental_appOverlay({ id: "inbox-alerts", component: InboxUnreadAlert });
+  app.slots.navPanel({ id: "inbox", title: "Inbox", icon: "./assets/envelope-simple-duotone.svg", path: "inbox", component: InboxPanel, experimental_sidebarAccessory: InboxUnreadAccessory });
+});

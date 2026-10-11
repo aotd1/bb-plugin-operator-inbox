@@ -11,7 +11,7 @@ https://github.com/user-attachments/assets/bce96327-c9a5-44e3-aa0d-1ce06fcb00b3
 
 ## Install
 
-Requires BB with Plugin SDK **0.4.34 or newer**. Uses the published SDK; no custom
+Requires BB **0.46.0 or newer** with Plugin SDK **0.6.37 or newer**. Uses the published SDK; no custom
 BB build or bb-collab setup is required.
 
 ```sh
@@ -20,6 +20,9 @@ bb plugin install https://github.com/pixexid/bb-plugin-operator-inbox
 
 Review and confirm the installation prompt. Open **Inbox** in BB's navigation.
 Agents receive the `send_operator_inbox_message` tool in new sessions.
+
+An Inbox alert icon appears above BB's sidebar footer only while messages are
+unread. Its badge shows the unread count, and clicking it opens Inbox.
 
 ## Keep decisions moving
 
