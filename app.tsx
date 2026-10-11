@@ -314,7 +314,7 @@ function InboxUnreadAlert() {
   const navigate = useBbNavigate();
   if (unread < 1) return null;
   const label = `Open Operator Inbox, ${unread} unread ${unread === 1 ? "message" : "messages"}`;
-  return <button type="button" aria-label={label} title={label} className="fixed bottom-16 left-2 z-50 flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-lg hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" onClick={() => navigate.toPluginPanel("inbox") }>
+  return <button type="button" aria-label={label} title={label} className="fixed bottom-16 left-2 z-50 flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" onClick={() => navigate.toPluginPanel("inbox") }>
     <EnvelopeOpenIcon aria-hidden="true" focusable="false" color="currentColor" weight="duotone" size={19} />
     <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] font-semibold leading-4 text-destructive-foreground">{unread > 99 ? "99+" : unread}</span>
   </button>;
