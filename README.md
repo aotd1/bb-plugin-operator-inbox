@@ -23,6 +23,8 @@ Agents receive the `send_operator_inbox_message` tool in new sessions.
 
 An Inbox alert icon appears above BB's sidebar footer only while messages are
 unread. Its badge shows the unread count, and clicking it opens Inbox.
+Each thread also has an **Inbox** side-panel action scoped to that thread's
+project.
 
 ## Keep decisions moving
 
@@ -37,14 +39,15 @@ problems themselves and finish the work they are already authorized to do
 before asking you to decide. Fewer, better requests make the unread count useful.
 
 - **Read:** expand a card to read it; click its header or chevron again to
-  collapse it. Opening a card marks it read once saved.
+  collapse it. Messages stay unread until you explicitly use **Mark read** or
+  send a reply.
 - **Inspect:** open linked images, reports, or web pages using BB's native
   file preview and browser preference. Inbox stays available beside the panel.
 - **Reply:** send an answer directly to the original sender thread. Drafts
-  survive switching cards while the panel remains mounted. Each message accepts
+  survive panel and tab switches for the current BB session. Each message accepts
   one reply; continue a longer conversation through **Open sender thread**.
-- **Organize:** filter by project and archive handled messages using the icon
-  before the timestamp. Archived messages remain available through the filter.
+- **Organize:** filter by project and archive handled messages from the
+  expanded card actions. Archived messages remain available through the filter.
 
 Cards stay newest-first by creation time. Reading, replying, and archiving do
 not reorder the remaining messages. Reading or archiving is **not approval**

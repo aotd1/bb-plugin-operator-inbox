@@ -23,6 +23,7 @@ const message = {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  window.sessionStorage.clear();
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -104,9 +105,11 @@ describe("Operator Inbox panel", () => {
 
     const editor = await rendered.findByLabelText("Reply text");
     fireEvent.change(editor, { target: { value: "Proceed Tuesday" } });
+    expect(window.sessionStorage.getItem("operator-inbox.drafts")).toContain("Proceed Tuesday");
     fireEvent.click(rendered.getByRole("button", { name: "Send reply" }));
     expect(await rendered.findByText("Reply accepted by BB (queued). Provider consumption is not observed.")).toBeTruthy();
     expect(rpc.replyToOperatorMessage).toHaveBeenCalledWith({ projectId: "project-a", messageId: 1, text: "Proceed Tuesday" });
+    expect(window.sessionStorage.getItem("operator-inbox.drafts")).toBe("{}");
     expect(rendered.queryByText(/reply delivered/i)).toBeNull();
   });
 
@@ -119,9 +122,12 @@ describe("Operator Inbox panel", () => {
       rpc: rpc as never,
     });
 
-    await waitFor(() => expect(rpc.markOperatorMessageRead).toHaveBeenCalledWith({ projectId: "project-a", messageId: 1 }));
+    await rendered.findByRole("button", { name: "Mark message read" });
+    expect(rpc.markOperatorMessageRead).not.toHaveBeenCalled();
+    fireEvent.click(rendered.getByRole("button", { name: "Mark message read" }));
     await waitFor(() => expect(rendered.queryByRole("button", { name: "Mark message read" })).toBeNull());
-    fireEvent.click(rendered.getAllByRole("button", { name: "Archive message" }).at(-1)!);
+    expect(rpc.markOperatorMessageRead).toHaveBeenCalledWith({ projectId: "project-a", messageId: 1 });
+    fireEvent.click(rendered.getByRole("button", { name: "Archive message" }));
     expect(await rendered.findByText("Archived. Turn on Show archived to include it again.")).toBeTruthy();
 
     const contaminated = renderSlot(app.navPanels[0]!, { subPath: "" }, {
@@ -130,6 +136,23 @@ describe("Operator Inbox panel", () => {
     });
     expect(await contaminated.findByText(/returned a message from another project/)).toBeTruthy();
     expect(contaminated.queryByText("Decision needed")).toBeNull();
+  });
+
+  it("opens a project-locked thread panel and restores its session draft", async () => {
+    const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
+    const app = await loadApp();
+    expect(app.threadPanelActions.map(({ id }) => id)).toContain("inbox");
+    window.sessionStorage.setItem("operator-inbox.drafts", JSON.stringify({ "project-a:1": "Keep this draft" }));
+    const operatorMessages = vi.fn(async () => ({ messages: [message] }));
+    const rendered = renderSlot(app.threadPanelActions[0]!, { threadId: "thread-current", params: null }, {
+      sidebarThreads: { status: "ready", projects: [project], threads: [{ id: "thread-current", projectId: "project-a" } as never] },
+      rpc: handlers({ operatorMessages }) as never,
+    });
+
+    expect(await rendered.findByText("Project A")).toBeTruthy();
+    expect(rendered.queryByRole("combobox")).toBeNull();
+    expect((rendered.getByLabelText("Reply text") as HTMLTextAreaElement).value).toBe("Keep this draft");
+    expect(operatorMessages).toHaveBeenCalledWith({ projectIds: ["project-a"] });
   });
 
   it("updates the unread accessory from realtime without polling", async () => {
@@ -324,7 +347,9 @@ it("clears unread feedback only after saving and keeps order and selection throu
   await rendered.findByRole("button", { name: /^Collapse message #1/ });
   expect(rendered.getAllByLabelText("Unread", { exact: true })).toHaveLength(2);
   expect(rendered.getByText("2 unread")).toBeTruthy();
-  await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+  expect(read).not.toHaveBeenCalled();
+  fireEvent.click(rendered.getByRole("button", { name: "Mark message read" }));
+  expect(read).toHaveBeenCalledTimes(1);
   await act(async () => { finish(); await pending; });
   await waitFor(() => expect(rendered.getAllByLabelText("Unread", { exact: true })).toHaveLength(1));
   expect(rendered.getByText("1 unread")).toBeTruthy();
@@ -339,8 +364,8 @@ it("clears unread feedback only after saving and keeps order and selection throu
   expect(rendered.getByRole("button", { name: /^Expand message #3/ })).toBeTruthy();
   expect(read).toHaveBeenCalledTimes(1);
   fireEvent.click(rendered.getByRole("button", { name: /^Expand message #2/ }));
-  await waitFor(() => expect(rendered.getAllByLabelText("Unread", { exact: true })).toHaveLength(1));
-  expect(rendered.getByText("1 unread")).toBeTruthy();
+  expect(rendered.getAllByLabelText("Unread", { exact: true })).toHaveLength(2);
+  expect(rendered.getByText("2 unread")).toBeTruthy();
   expect(toggles()).toEqual(["#3", "#1", "#2"]);
 });
 
@@ -351,6 +376,7 @@ it("keeps a failed read unread and allows a manual retry without an automatic re
     sidebarThreads: { status: "ready", projects: [project], threads: [] },
     rpc: handlers({ markOperatorMessageRead: read }) as never,
   });
+  fireEvent.click(await rendered.findByRole("button", { name: "Mark message read" }));
   await rendered.findByText(/Could not mark message read:.*Offline/);
   expect(read).toHaveBeenCalledTimes(1);
   expect(rendered.getByLabelText("Unread", { exact: true })).toBeTruthy();
@@ -360,7 +386,7 @@ it("keeps a failed read unread and allows a manual retry without an automatic re
   expect(rendered.queryByRole("alert")).toBeNull();
 });
 
-it("archives from the header without expanding or reading the collapsed card", async () => {
+it("archives only from the expanded message actions without marking it read", async () => {
   const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
   const second = { ...message, messageId: 2, text: "Collapsed message" };
   const archive = vi.fn(async () => ({ ...second, archivedAtMs: 3 }));
@@ -369,11 +395,11 @@ it("archives from the header without expanding or reading the collapsed card", a
     sidebarThreads: { status: "ready", projects: [project], threads: [] }, rpc: rpc as never,
   });
   await rendered.findByRole("button", { name: /^Expand message #2/ });
-  await waitFor(() => expect(rendered.queryByRole("button", { name: "Mark message read" })).toBeNull());
-  fireEvent.click(rendered.getAllByRole("button", { name: "Archive message" })[1]!);
+  expect(rendered.getAllByRole("button", { name: "Archive message" })).toHaveLength(1);
+  fireEvent.click(rendered.getByRole("button", { name: /^Expand message #2/ }));
+  fireEvent.click(rendered.getByRole("button", { name: "Archive message" }));
   await waitFor(() => expect(rendered.queryByRole("button", { name: /^Expand message #2/ })).toBeNull());
   expect(archive).toHaveBeenCalledWith({ projectId: "project-a", messageId: 2 });
   expect(rendered.getByRole("button", { name: /^Collapse message #1/ })).toBeTruthy();
-  expect(rpc.markOperatorMessageRead).toHaveBeenCalledTimes(1);
-  expect(rpc.markOperatorMessageRead).toHaveBeenCalledWith({ projectId: "project-a", messageId: 1 });
+  expect(rpc.markOperatorMessageRead).not.toHaveBeenCalled();
 });
