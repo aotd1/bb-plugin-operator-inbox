@@ -124,6 +124,10 @@ describe("Operator Inbox panel", () => {
 
     await rendered.findByRole("button", { name: "Mark message read" });
     expect(rpc.markOperatorMessageRead).not.toHaveBeenCalled();
+    fireEvent.focus(rendered.getByRole("button", { name: "Mark message read" }));
+    expect(await rendered.findByRole("tooltip", { name: "Mark as read" })).toBeTruthy();
+    fireEvent.focus(rendered.getByRole("button", { name: "Archive message" }));
+    expect(await rendered.findByRole("tooltip", { name: "Archive" })).toBeTruthy();
     fireEvent.click(rendered.getByRole("button", { name: "Mark message read" }));
     await waitFor(() => expect(rendered.queryByRole("button", { name: "Mark message read" })).toBeNull());
     expect(rpc.markOperatorMessageRead).toHaveBeenCalledWith({ projectId: "project-a", messageId: 1 });
