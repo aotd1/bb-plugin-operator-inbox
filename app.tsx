@@ -258,7 +258,7 @@ function InboxPanel({ lockedProjectId }: Partial<PluginNavPanelProps> & { locked
   return <main className="h-full min-w-0 overflow-y-auto p-3"><div className="mx-auto grid w-full min-w-0 max-w-3xl gap-3">
     <header className="flex flex-wrap items-center justify-between gap-2">
       <h1 className="text-xl font-semibold tracking-tight">Inbox</h1>
-      <p className="text-xs text-muted-foreground" aria-live="polite">{unreadCount ? `${unreadCount} unread` : "No unread messages"}</p>
+      <p className="text-xs text-muted-foreground" aria-live="polite">{unreadCount ? `${unreadCount} unread` : "All caught up"}</p>
     </header>
     <section aria-label="Inbox toolbar" className="flex flex-wrap items-center gap-2">
       {lockedProjectId ? <p className="min-w-0 flex-1 basis-40 truncate text-sm text-muted-foreground" title={currentProjectLabel}>{currentProjectLabel}</p> : <label className="min-w-0 flex-1 basis-40"><span className="sr-only">Project</span><select className="min-h-9 w-full min-w-0 rounded-md border border-border bg-background px-2 py-1.5 text-sm" value={projectId} onChange={(event) => setFiltersAndPersist({ projectId: event.target.value, showArchived })}><option value="">All projects</option>{sidebar.projects.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</select></label>}
@@ -309,16 +309,16 @@ function InboxPanel({ lockedProjectId }: Partial<PluginNavPanelProps> & { locked
   </div></main>;
 }
 
-function useUnansweredOperatorMessageCount() {
+function useUnreadOperatorMessageCount() {
   const sidebar = experimental_useSidebarThreads();
   const rpc = useRpc<typeof rpcContract>();
   const projectIds = useMemo(() => sidebar.projects.map(({ id }) => id), [sidebar.projects]);
-  const [unanswered, setUnanswered] = useState(0);
+  const [unread, setUnread] = useState(0);
   const refreshSequence = useRef(0);
   const refresh = useCallback(() => {
     const sequence = ++refreshSequence.current;
-    if (projectIds.length === 0) { setUnanswered(0); return; }
-    void rpc.call("unansweredOperatorMessageCount", { projectIds }).then(({ count }) => { if (sequence === refreshSequence.current) setUnanswered(count); }, () => undefined);
+    if (projectIds.length === 0) { setUnread(0); return; }
+    void rpc.call("unreadOperatorMessageCount", { projectIds }).then(({ count }) => { if (sequence === refreshSequence.current) setUnread(count); }, () => undefined);
   }, [projectIds, rpc]);
 
   useEffect(() => {
@@ -337,36 +337,36 @@ function useUnansweredOperatorMessageCount() {
     wasConnected.current = true;
   }, [realtimeState, refresh]);
 
-  return unanswered;
+  return unread;
 }
 
 // Registered icons render outside plugin slots, so keep RPC/realtime hooks in
 // the app overlay and expose only the count to the icon through a React store.
-let inboxUnansweredCount = 0;
+let inboxUnreadCount = 0;
 const inboxCountListeners = new Set<() => void>();
 const subscribeInboxCount = (listener: () => void) => {
   inboxCountListeners.add(listener);
   return () => { inboxCountListeners.delete(listener); };
 };
-const getInboxCount = () => inboxUnansweredCount;
+const getInboxCount = () => inboxUnreadCount;
 function publishInboxCount(count: number) {
-  if (count === inboxUnansweredCount) return;
-  inboxUnansweredCount = count;
+  if (count === inboxUnreadCount) return;
+  inboxUnreadCount = count;
   for (const listener of inboxCountListeners) listener();
 }
 function InboxCountController() {
-  const unanswered = useUnansweredOperatorMessageCount();
-  useEffect(() => { publishInboxCount(unanswered); }, [unanswered]);
+  const unread = useUnreadOperatorMessageCount();
+  useEffect(() => { publishInboxCount(unread); }, [unread]);
   useEffect(() => () => publishInboxCount(0), []);
   return null;
 }
 
 function InboxIcon({ className }: { className?: string }) {
-  const unanswered = useSyncExternalStore(subscribeInboxCount, getInboxCount, getInboxCount);
-  const label = `${unanswered} unanswered operator ${unanswered === 1 ? "message" : "messages"}`;
+  const unread = useSyncExternalStore(subscribeInboxCount, getInboxCount, getInboxCount);
+  const label = `${unread} unread operator ${unread === 1 ? "message" : "messages"}`;
   return <span className={`relative inline-flex ${className ?? ""}`} title={label}>
     <EnvelopeSimpleIcon aria-hidden="true" focusable="false" color="currentColor" weight="duotone" className="h-full w-full" />
-    {unanswered > 0 && <span className="absolute -right-1.5 -top-1 min-w-3.5 rounded-full bg-destructive px-0.5 text-center text-[9px] font-semibold leading-3.5 text-destructive-foreground">{unanswered > 99 ? "99+" : unanswered}</span>}
+    {unread > 0 && <span className="absolute -right-1.5 -top-1 min-w-3.5 rounded-full bg-destructive px-0.5 text-center text-[9px] font-semibold leading-3.5 text-destructive-foreground">{unread > 99 ? "99+" : unread}</span>}
   </span>;
 }
 

@@ -171,29 +171,3 @@ it("keeps creation order through read, reply, archive and repeat read without se
     expect(await ids(false)).toEqual([2, 1]);
   } finally { now.mockRestore(); await fixture.harness.lifecycle.dispose(); }
 });
-
-
-it("counts unanswered active messages across projects independently of read state and list limits", async () => {
-  const fixture = host();
-  try {
-    await storeMessage(fixture);
-    await storeMessage(fixture);
-    await storeMessage(fixture);
-    await fixture.harness.behavior.callAgentTool("send_operator_inbox_message", { severity: "routine", text: "Another project" }, { projectId: "project-b", threadId: "thread-sender" });
-    const count = (projectIds = ["project-a"]) => fixture.harness.behavior.callRpc("unansweredOperatorMessageCount", { projectIds });
-    await expect(count()).resolves.toEqual({ count: 3 });
-    await fixture.harness.behavior.callRpc("markOperatorMessageRead", { projectId: "project-a", messageId: 1 });
-    await expect(count()).resolves.toEqual({ count: 3 });
-    fixture.send.mockRejectedValueOnce(new Error("Offline"));
-    await expect(fixture.harness.behavior.callRpc("replyToOperatorMessage", { projectId: "project-a", messageId: 1, text: "Reply" })).rejects.toThrow("Offline");
-    await expect(count()).resolves.toEqual({ count: 3 });
-    await fixture.harness.behavior.callRpc("replyToOperatorMessage", { projectId: "project-a", messageId: 1, text: "Reply" });
-    await expect(count()).resolves.toEqual({ count: 2 });
-    await fixture.harness.behavior.callRpc("archiveOperatorMessage", { projectId: "project-a", messageId: 2 });
-    await expect(count()).resolves.toEqual({ count: 1 });
-    await expect(count(["project-a", "project-b"])).resolves.toEqual({ count: 2 });
-    await expect(count(["project-c"])).resolves.toEqual({ count: 0 });
-    for (let i = 0; i < 256; i++) await storeMessage(fixture);
-    await expect(count()).resolves.toEqual({ count: 257 });
-  } finally { await fixture.harness.lifecycle.dispose(); }
-});

@@ -60,10 +60,6 @@ export const rpcContract = {
     input: z.object({ projectIds }).strict(),
     output: z.object({ count: z.number().int().nonnegative() }).strict(),
   },
-  unansweredOperatorMessageCount: {
-    input: z.object({ projectIds }).strict(),
-    output: z.object({ count: z.number().int().nonnegative() }).strict(),
-  },
   markOperatorMessageRead: { input: messageMutationInputSchema, output: operatorMessageSchema },
   archiveOperatorMessage: { input: messageMutationInputSchema, output: operatorMessageSchema },
   replyToOperatorMessage: { input: replyInputSchema, output: operatorMessageSchema },

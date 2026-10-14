@@ -37,7 +37,7 @@ function handlers(overrides: Record<string, unknown> = {}) {
   return {
     messageFileContext: vi.fn(async () => null),
     operatorMessages: vi.fn(async () => ({ messages: [message] })),
-    unansweredOperatorMessageCount: vi.fn(async () => ({ count: 1 })),
+    unreadOperatorMessageCount: vi.fn(async () => ({ count: 1 })),
     markOperatorMessageRead: vi.fn(async (input: { projectId: string; messageId: number }) => ({ ...message, ...input, readAtMs: 2 })),
     archiveOperatorMessage: vi.fn(async () => ({ ...message, archivedAtMs: 3 })),
     replyToOperatorMessage: vi.fn(async ({ text }: { text: string }) => ({ ...message, readAtMs: 4, replyText: text, replyAcceptedAtMs: 4, replyDelivery: "queued" as const })),
@@ -241,7 +241,7 @@ describe("Operator Inbox panel", () => {
     const countRpc = vi.fn(async () => ({ count }));
     const controller = renderSlot(app.appOverlays[0]!, {}, {
       sidebarThreads: { status: "ready", projects: [project], threads: [] },
-      rpc: handlers({ unansweredOperatorMessageCount: countRpc }) as never,
+      rpc: handlers({ unreadOperatorMessageCount: countRpc }) as never,
     });
     const icon = renderSlot(app.icons[0]!, { className: "test-icon-size" });
     await icon.findByText("1");
@@ -265,7 +265,7 @@ describe("Operator Inbox panel", () => {
     const countRpc = vi.fn().mockReturnValueOnce(new Promise((resolve) => { finish = resolve; })).mockResolvedValueOnce({ count: 1 });
     const controller = renderSlot(app.appOverlays[0]!, {}, {
       sidebarThreads: { status: "ready", projects: [project], threads: [] },
-      rpc: handlers({ unansweredOperatorMessageCount: countRpc }) as never,
+      rpc: handlers({ unreadOperatorMessageCount: countRpc }) as never,
     });
     const icon = renderSlot(app.icons[0]!, {});
     await controller.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
@@ -281,7 +281,7 @@ describe("Operator Inbox panel", () => {
     const countRpc = vi.fn(async () => ({ count }));
     const controller = renderSlot(app.appOverlays[0]!, {}, {
       sidebarThreads: { status: "ready", projects: [project], threads: [] },
-      rpc: handlers({ unansweredOperatorMessageCount: countRpc }) as never,
+      rpc: handlers({ unreadOperatorMessageCount: countRpc }) as never,
     });
     const icon = renderSlot(app.icons[0]!, {});
     await waitFor(() => expect(countRpc).toHaveBeenCalledTimes(1));
@@ -290,7 +290,7 @@ describe("Operator Inbox panel", () => {
     count = 120;
     await controller.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
     await icon.findByText("99+");
-    expect(icon.container.firstElementChild?.getAttribute("title")).toBe("120 unanswered operator messages");
+    expect(icon.container.firstElementChild?.getAttribute("title")).toBe("120 unread operator messages");
     count = 0;
     await controller.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
     await waitFor(() => expect(icon.container.textContent).toBe(""));

@@ -21,9 +21,9 @@ bb plugin install https://github.com/pixexid/bb-plugin-operator-inbox
 Review and confirm the installation prompt. Open **Inbox** in BB's navigation.
 Agents receive the `send_operator_inbox_message` tool in new sessions.
 
-The Inbox navigation icon shows a badge for unanswered, unarchived messages
-across all projects. Clicking it opens Inbox. Marking a message read keeps it in
-this count; an accepted reply or archiving removes it.
+The Inbox navigation icon shows a badge for unread, unarchived messages
+across all projects. Clicking it opens Inbox. The badge clears after marking
+a message read, sending a reply, or archiving it.
 Each thread also has an **Inbox** side-panel action scoped to that thread's
 project.
 
