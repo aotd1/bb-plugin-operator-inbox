@@ -46,7 +46,8 @@ before asking you to decide. Fewer, better requests make the unread count useful
   file preview and browser preference. Inbox stays available beside the panel.
 - **Reply:** send an answer directly to the original sender thread. Drafts
   survive panel and tab switches for the current BB session. Each message accepts
-  one reply; continue a longer conversation through **Open sender thread**.
+  one reply. Press **Enter** to send or **Shift+Enter** for a new line;
+  continue a longer conversation through **Open sender thread**.
 - **Organize:** filter by project and archive handled messages from the
   expanded card actions. Archived messages remain available through the filter.
 

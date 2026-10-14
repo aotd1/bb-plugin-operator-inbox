@@ -113,6 +113,79 @@ describe("Operator Inbox panel", () => {
     expect(rendered.queryByText(/reply delivered/i)).toBeNull();
   });
 
+  it("sends trimmed multiline replies with Enter and ignores repeated submits while pending", async () => {
+    const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
+    let finish!: (value: unknown) => void;
+    const reply = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    const rendered = renderSlot((await loadApp()).navPanels[0]!, { subPath: "" }, {
+      sidebarThreads: { status: "ready", projects: [project], threads: [] },
+      rpc: handlers({ replyToOperatorMessage: reply }) as never,
+    });
+    const editor = await rendered.findByLabelText("Reply text");
+    fireEvent.change(editor, { target: { value: "  First line\nSecond line  " } });
+    expect(fireEvent.keyDown(editor, { key: "Enter" })).toBe(false);
+    fireEvent.keyDown(editor, { key: "Enter" });
+    fireEvent.click(rendered.getByRole("button", { name: "Sending reply" }));
+    expect(reply).toHaveBeenCalledTimes(1);
+    expect(reply).toHaveBeenCalledWith({ projectId: "project-a", messageId: 1, text: "First line\nSecond line" });
+    await act(async () => finish({ ...message, replyText: "First line\nSecond line", replyAcceptedAtMs: 4, readAtMs: 4, replyDelivery: "queued" }));
+    expect(await rendered.findByRole("region", { name: "Reply accepted by BB" })).toBeTruthy();
+    expect(window.sessionStorage.getItem("operator-inbox.drafts")).toBe("{}");
+  });
+
+  it("allows Shift+Enter and IME confirmation, and does not send empty or held Enter", async () => {
+    const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
+    const rpc = handlers();
+    const rendered = renderSlot((await loadApp()).navPanels[0]!, { subPath: "" }, {
+      sidebarThreads: { status: "ready", projects: [project], threads: [] }, rpc: rpc as never,
+    });
+    const editor = await rendered.findByLabelText("Reply text");
+    fireEvent.keyDown(editor, { key: "Enter" });
+    fireEvent.change(editor, { target: { value: " " } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+    fireEvent.change(editor, { target: { value: "Draft" } });
+    expect(fireEvent.keyDown(editor, { key: "Enter", shiftKey: true })).toBe(true);
+    expect(fireEvent.keyDown(editor, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(editor, { key: "Enter", keyCode: 229 })).toBe(true);
+    fireEvent.keyDown(editor, { key: "Enter", repeat: true });
+    expect(rpc.replyToOperatorMessage).not.toHaveBeenCalled();
+    expect((editor as HTMLTextAreaElement).value).toBe("Draft");
+  });
+
+  it("keeps a failed Enter reply draft and allows retry with the send button", async () => {
+    const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
+    const reply = vi.fn().mockRejectedValueOnce(new Error("Offline")).mockResolvedValue({ ...message, replyText: "Retry me", replyAcceptedAtMs: 4, readAtMs: 4, replyDelivery: "queued" });
+    const rendered = renderSlot((await loadApp()).navPanels[0]!, { subPath: "" }, {
+      sidebarThreads: { status: "ready", projects: [project], threads: [] },
+      rpc: handlers({ replyToOperatorMessage: reply }) as never,
+    });
+    const editor = await rendered.findByLabelText("Reply text");
+    fireEvent.change(editor, { target: { value: "Retry me" } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+    await rendered.findByRole("alert");
+    await waitFor(() => expect((rendered.getByRole("button", { name: "Send reply" }) as HTMLButtonElement).disabled).toBe(false));
+    expect((editor as HTMLTextAreaElement).value).toBe("Retry me");
+    expect(window.sessionStorage.getItem("operator-inbox.drafts")).toContain("Retry me");
+    fireEvent.click(rendered.getByRole("button", { name: "Send reply" }));
+    await rendered.findByRole("region", { name: "Reply accepted by BB" });
+    expect(reply).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not send with Enter while a message mutation is pending", async () => {
+    const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
+    let finish!: (value: unknown) => void;
+    const rpc = handlers({ markOperatorMessageRead: () => new Promise((resolve) => { finish = resolve; }) });
+    const rendered = renderSlot((await loadApp()).navPanels[0]!, { subPath: "" }, {
+      sidebarThreads: { status: "ready", projects: [project], threads: [] }, rpc: rpc as never,
+    });
+    const editor = await rendered.findByLabelText("Reply text");
+    fireEvent.change(editor, { target: { value: "Wait" } });
+    fireEvent.click(rendered.getByRole("button", { name: "Mark message read" }));
+    fireEvent.keyDown(editor, { key: "Enter" });
+    expect(rpc.replyToOperatorMessage).not.toHaveBeenCalled();
+    await act(async () => finish({ ...message, readAtMs: 2 }));
+  });
+
   it("marks read, archives, and fails closed on a foreign-project row", async () => {
     const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
     const app = await loadApp();
