@@ -141,6 +141,12 @@ export default function plugin(bb: BbPluginApi) {
         WHERE project_id IN (${placeholders}) AND read_at_ms IS NULL AND archived_at_ms IS NULL`).get(...projectIds) as { count: number };
       return { count: row.count };
     },
+    unansweredOperatorMessageCount({ projectIds }) {
+      const placeholders = projectIds.map(() => "?").join(", ");
+      const row = db.prepare(`SELECT COUNT(*) AS count FROM messages
+        WHERE project_id IN (${placeholders}) AND reply_accepted_at_ms IS NULL AND archived_at_ms IS NULL`).get(...projectIds) as { count: number };
+      return { count: row.count };
+    },
     markOperatorMessageRead({ projectId, messageId }) {
       return updateTimestamp("read_at_ms", projectId, messageId);
     },

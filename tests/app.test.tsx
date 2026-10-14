@@ -37,7 +37,7 @@ function handlers(overrides: Record<string, unknown> = {}) {
   return {
     messageFileContext: vi.fn(async () => null),
     operatorMessages: vi.fn(async () => ({ messages: [message] })),
-    unreadOperatorMessageCount: vi.fn(async () => ({ count: 1 })),
+    unansweredOperatorMessageCount: vi.fn(async () => ({ count: 1 })),
     markOperatorMessageRead: vi.fn(async (input: { projectId: string; messageId: number }) => ({ ...message, ...input, readAtMs: 2 })),
     archiveOperatorMessage: vi.fn(async () => ({ ...message, archivedAtMs: 3 })),
     replyToOperatorMessage: vi.fn(async ({ text }: { text: string }) => ({ ...message, readAtMs: 4, replyText: text, replyAcceptedAtMs: 4, replyDelivery: "queued" as const })),
@@ -159,42 +159,73 @@ describe("Operator Inbox panel", () => {
     expect(operatorMessages).toHaveBeenCalledWith({ projectIds: ["project-a"] });
   });
 
-  it("updates the unread accessory from realtime without polling", async () => {
+  it("updates the navigation icon from realtime and reconnect without polling", async () => {
     const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
     const app = await loadApp();
+    expect(app.navPanels[0]!.icon).toBe("operator-inbox/inbox");
+    expect(app.icons[0]!.name).toBe("operator-inbox/inbox");
     let count = 1;
-    const unread = vi.fn(async () => ({ count }));
-    const rendered = renderSlot({ component: app.navPanels[0]!.experimental_sidebarAccessory! }, {}, {
+    const countRpc = vi.fn(async () => ({ count }));
+    const controller = renderSlot(app.appOverlays[0]!, {}, {
       sidebarThreads: { status: "ready", projects: [project], threads: [] },
-      rpc: handlers({ unreadOperatorMessageCount: unread }) as never,
+      rpc: handlers({ unansweredOperatorMessageCount: countRpc }) as never,
     });
-
-    await waitFor(() => expect(rendered.getByRole("status").textContent).toBe("1"));
+    const icon = renderSlot(app.icons[0]!, { className: "test-icon-size" });
+    await icon.findByText("1");
+    expect(icon.container.querySelector(".test-icon-size")).toBeTruthy();
     count = 2;
-    await rendered.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
-    await waitFor(() => expect(rendered.getByRole("status").textContent).toBe("2"));
-    expect(unread).toHaveBeenCalledTimes(2);
+    await controller.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-b" });
+    expect(countRpc).toHaveBeenCalledTimes(1);
+    await controller.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
+    await icon.findByText("2");
+    expect(countRpc).toHaveBeenCalledTimes(2);
+    await controller.behavior.setRealtimeConnectionState("reconnecting");
+    count = 3;
+    await controller.behavior.setRealtimeConnectionState("connected");
+    await icon.findByText("3");
   });
 
-  it("shows the footer alert only while messages are unread", async () => {
+  it("does not replace a newer count with a stale RPC response", async () => {
+    const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
+    const app = await loadApp();
+    let finish!: (value: { count: number }) => void;
+    const countRpc = vi.fn().mockReturnValueOnce(new Promise((resolve) => { finish = resolve; })).mockResolvedValueOnce({ count: 1 });
+    const controller = renderSlot(app.appOverlays[0]!, {}, {
+      sidebarThreads: { status: "ready", projects: [project], threads: [] },
+      rpc: handlers({ unansweredOperatorMessageCount: countRpc }) as never,
+    });
+    const icon = renderSlot(app.icons[0]!, {});
+    await controller.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
+    await icon.findByText("1");
+    await act(async () => finish({ count: 2 }));
+    expect(icon.container.textContent).toBe("1");
+  });
+
+  it("keeps the navigation icon at zero and caps only the visible badge at 99+", async () => {
     const { renderSlot } = await import("@get-bb/plugin-sdk/testing/app");
     const app = await loadApp();
     let count = 0;
-    const unread = vi.fn(async () => ({ count }));
-    const rendered = renderSlot(app.appOverlays[0]!, {}, {
+    const countRpc = vi.fn(async () => ({ count }));
+    const controller = renderSlot(app.appOverlays[0]!, {}, {
       sidebarThreads: { status: "ready", projects: [project], threads: [] },
-      rpc: handlers({ unreadOperatorMessageCount: unread }) as never,
+      rpc: handlers({ unansweredOperatorMessageCount: countRpc }) as never,
     });
-    await waitFor(() => expect(unread).toHaveBeenCalledTimes(1));
-    expect(rendered.queryByRole("button", { name: /Open Operator Inbox/ })).toBeNull();
-    count = 1;
-    await rendered.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
-    const alert = await rendered.findByRole("button", { name: "Open Operator Inbox, 1 unread message" });
-    fireEvent.click(alert);
-    expect(rendered.inspection.navigateCalls).toContainEqual({ method: "toPluginPanel", path: "inbox", options: undefined });
+    const icon = renderSlot(app.icons[0]!, {});
+    await waitFor(() => expect(countRpc).toHaveBeenCalledTimes(1));
+    expect(icon.container.querySelector("svg")).toBeTruthy();
+    expect(icon.container.textContent).toBe("");
+    count = 120;
+    await controller.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
+    await icon.findByText("99+");
+    expect(icon.container.firstElementChild?.getAttribute("title")).toBe("120 unanswered operator messages");
     count = 0;
-    await rendered.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
-    await waitFor(() => expect(rendered.queryByRole("button", { name: /Open Operator Inbox/ })).toBeNull());
+    await controller.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
+    await waitFor(() => expect(icon.container.textContent).toBe(""));
+    count = 1;
+    await controller.behavior.emitRealtime(INBOX_CHANGED_CHANNEL, { projectId: "project-a" });
+    await icon.findByText("1");
+    controller.lifecycle.unmount();
+    await waitFor(() => expect(icon.container.textContent).toBe(""));
   });
 });
 

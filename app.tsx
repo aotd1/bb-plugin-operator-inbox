@@ -1,8 +1,8 @@
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArchiveIcon, ArrowClockwiseIcon, CaretDownIcon, FileIcon, FileTextIcon, FilePdfIcon, ImageIcon, GlobeIcon, GithubLogoIcon, EnvelopeOpenIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ArchiveIcon, ArrowClockwiseIcon, CaretDownIcon, FileIcon, FileTextIcon, FilePdfIcon, ImageIcon, GlobeIcon, GithubLogoIcon, EnvelopeSimpleIcon, EnvelopeOpenIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react";
 import { definePluginApp, UrlLink, experimental_useSidebarThreads, useBbNavigate, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import type { ExperimentalLiveFileTarget, PluginNavPanelProps, PluginRpcResult, PluginThreadPanelProps } from "@get-bb/plugin-sdk/app";
 import { fileContextSchema, safeAbsolutePath, type rpcContract } from "./contract";
@@ -238,7 +238,7 @@ function InboxPanel({ lockedProjectId }: Partial<PluginNavPanelProps> & { locked
   return <main className="h-full min-w-0 overflow-y-auto p-3"><div className="mx-auto grid w-full min-w-0 max-w-3xl gap-3">
     <header className="flex flex-wrap items-center justify-between gap-2">
       <h1 className="text-xl font-semibold tracking-tight">Inbox</h1>
-      <p className="text-xs text-muted-foreground" aria-live="polite">{unreadCount ? `${unreadCount} unread` : "All caught up"}</p>
+      <p className="text-xs text-muted-foreground" aria-live="polite">{unreadCount ? `${unreadCount} unread` : "No unread messages"}</p>
     </header>
     <section aria-label="Inbox toolbar" className="flex flex-wrap items-center gap-2">
       {lockedProjectId ? <p className="min-w-0 flex-1 basis-40 truncate text-sm text-muted-foreground" title={currentProjectLabel}>{currentProjectLabel}</p> : <label className="min-w-0 flex-1 basis-40"><span className="sr-only">Project</span><select className="min-h-9 w-full min-w-0 rounded-md border border-border bg-background px-2 py-1.5 text-sm" value={projectId} onChange={(event) => setFiltersAndPersist({ projectId: event.target.value, showArchived })}><option value="">All projects</option>{sidebar.projects.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</select></label>}
@@ -284,17 +284,22 @@ function InboxPanel({ lockedProjectId }: Partial<PluginNavPanelProps> & { locked
   </div></main>;
 }
 
-function useUnreadOperatorMessageCount() {
+function useUnansweredOperatorMessageCount() {
   const sidebar = experimental_useSidebarThreads();
   const rpc = useRpc<typeof rpcContract>();
   const projectIds = useMemo(() => sidebar.projects.map(({ id }) => id), [sidebar.projects]);
-  const [unread, setUnread] = useState(0);
+  const [unanswered, setUnanswered] = useState(0);
+  const refreshSequence = useRef(0);
   const refresh = useCallback(() => {
-    if (projectIds.length === 0) { setUnread(0); return; }
-    void rpc.call("unreadOperatorMessageCount", { projectIds }).then(({ count }) => setUnread(count), () => undefined);
+    const sequence = ++refreshSequence.current;
+    if (projectIds.length === 0) { setUnanswered(0); return; }
+    void rpc.call("unansweredOperatorMessageCount", { projectIds }).then(({ count }) => { if (sequence === refreshSequence.current) setUnanswered(count); }, () => undefined);
   }, [projectIds, rpc]);
 
-  useEffect(refresh, [refresh]);
+  useEffect(() => {
+    refresh();
+    return () => { refreshSequence.current++; };
+  }, [refresh]);
   useRealtime(INBOX_CHANGED_CHANNEL, useCallback((payload: unknown) => {
     const changedProjectId = payload && typeof payload === "object" ? (payload as { projectId?: unknown }).projectId : null;
     if (typeof changedProjectId === "string" && projectIds.includes(changedProjectId)) refresh();
@@ -307,26 +312,37 @@ function useUnreadOperatorMessageCount() {
     wasConnected.current = true;
   }, [realtimeState, refresh]);
 
-  return unread;
+  return unanswered;
 }
 
-function InboxUnreadAccessory() {
-  const unread = useUnreadOperatorMessageCount();
-
-  if (unread < 1) return null;
-  const label = `${unread} unread operator ${unread === 1 ? "message" : "messages"}`;
-  return <span role="status" aria-live="polite" aria-label={label} title={label} className="max-w-full truncate rounded-full bg-primary px-1.5 text-xs font-semibold leading-5 text-primary-foreground">{unread}</span>;
+// Registered icons render outside plugin slots, so keep RPC/realtime hooks in
+// the app overlay and expose only the count to the icon through a React store.
+let inboxUnansweredCount = 0;
+const inboxCountListeners = new Set<() => void>();
+const subscribeInboxCount = (listener: () => void) => {
+  inboxCountListeners.add(listener);
+  return () => { inboxCountListeners.delete(listener); };
+};
+const getInboxCount = () => inboxUnansweredCount;
+function publishInboxCount(count: number) {
+  if (count === inboxUnansweredCount) return;
+  inboxUnansweredCount = count;
+  for (const listener of inboxCountListeners) listener();
+}
+function InboxCountController() {
+  const unanswered = useUnansweredOperatorMessageCount();
+  useEffect(() => { publishInboxCount(unanswered); }, [unanswered]);
+  useEffect(() => () => publishInboxCount(0), []);
+  return null;
 }
 
-function InboxUnreadAlert() {
-  const unread = useUnreadOperatorMessageCount();
-  const navigate = useBbNavigate();
-  if (unread < 1) return null;
-  const label = `Open Operator Inbox, ${unread} unread ${unread === 1 ? "message" : "messages"}`;
-  return <button type="button" aria-label={label} title={label} className="fixed bottom-16 left-2 z-50 flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" onClick={() => navigate.toPluginPanel("inbox") }>
-    <EnvelopeOpenIcon aria-hidden="true" focusable="false" color="currentColor" weight="duotone" size={19} />
-    <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] font-semibold leading-4 text-destructive-foreground">{unread > 99 ? "99+" : unread}</span>
-  </button>;
+function InboxIcon({ className }: { className?: string }) {
+  const unanswered = useSyncExternalStore(subscribeInboxCount, getInboxCount, getInboxCount);
+  const label = `${unanswered} unanswered operator ${unanswered === 1 ? "message" : "messages"}`;
+  return <span className={`relative inline-flex ${className ?? ""}`} title={label}>
+    <EnvelopeSimpleIcon aria-hidden="true" focusable="false" color="currentColor" weight="duotone" className="h-full w-full" />
+    {unanswered > 0 && <span className="absolute -right-1.5 -top-1 min-w-3.5 rounded-full bg-destructive px-0.5 text-center text-[9px] font-semibold leading-3.5 text-destructive-foreground">{unanswered > 99 ? "99+" : unanswered}</span>}
+  </span>;
 }
 
 function InboxThreadPanel({ threadId }: PluginThreadPanelProps) {
@@ -337,7 +353,8 @@ function InboxThreadPanel({ threadId }: PluginThreadPanelProps) {
 }
 
 export default definePluginApp((app) => {
-  app.slots.experimental_appOverlay({ id: "inbox-alerts", component: InboxUnreadAlert });
-  app.slots.navPanel({ id: "inbox", title: "Inbox", icon: "./assets/envelope-simple-duotone.svg", path: "inbox", component: InboxPanel, experimental_sidebarAccessory: InboxUnreadAccessory });
+  app.experimental_icons.register({ name: "operator-inbox/inbox", component: InboxIcon });
+  app.slots.experimental_appOverlay({ id: "inbox-count", component: InboxCountController });
+  app.slots.navPanel({ id: "inbox", title: "Inbox", icon: "operator-inbox/inbox", path: "inbox", component: InboxPanel });
   app.slots.threadPanelAction({ id: "inbox", title: "Inbox", icon: "Mail", layout: "flush", component: InboxThreadPanel });
 });
